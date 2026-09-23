@@ -1,0 +1,16 @@
+{
+  "name": "@vanbotjs/adapter-milky",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Milky 消息标准协议适配器（正向/反向 WS、HTTP）",
+  "type": "module",
+  "vanbotAdapter": "milky",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

@@ -1,0 +1,53 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+*.tsbuildinfo
+
+# 运行态数据（单实例锁、缓存、cookie、二维码、浏览器指纹、适配器落盘数据）
+data/
+
+# 真实配置含 token / secret / cookie，禁止入库；仅提交 config.example.json
+config.json
+config.json.bak
+
+# 插件运行数据与插件本地依赖
+Van_keyword/
+plugin/lib/
+
+# 日志
+*.log
+logs/
+
+# 临时与本地脚本
+*.tmp
+_*.cjs
+inspect_*.cjs
+list_tables.cjs
+match_hash.cjs
+test_messages.ts
+
+# 调试用解密/测试数据库（含微信数据，禁止入库）
+*_decrypted.db
+*_decrypted.db-shm
+*_decrypted.db-wal
+*_test.db
+*_test.db-shm
+*_test.db-wal
+tmp_*.db
+tmp_*.db-shm
+tmp_*.db-wal
+*.db-shm
+*.db-wal
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# VitePress 缓存与临时构建
+docs/.vitepress/cache/
+docs/.vitepress/*.timestamp-*.mjs

@@ -1,0 +1,16 @@
+{
+  "name": "@vanbotjs/adapter-kook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KOOK 官方机器人适配器（WebSocket）",
+  "type": "module",
+  "vanbotAdapter": "kook",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@vanbotjs/adapter-douyin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "抖音私信适配器（playwright 浏览器自动化，重型可选依赖）",
+  "type": "module",
+  "vanbotAdapter": "douyin",
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@vanbotjs/adapter-onebot11",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OneBot-11 标准协议适配器（正向/反向 WS、HTTP）",
+  "type": "module",
+  "vanbotAdapter": "onebot11",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@vanbotjs/adapter-weixin_oc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "个人微信适配器（OpenClaw 接口）",
+  "type": "module",
+  "vanbotAdapter": "weixin_oc",
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

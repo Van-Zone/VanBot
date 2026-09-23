@@ -1,0 +1,16 @@
+{
+  "name": "@vanbotjs/adapter-icqq",
+  "version": "1.0.0",
+  "private": true,
+  "description": "QQ 登录式适配器（icqq 协议）",
+  "type": "module",
+  "vanbotAdapter": "icqq",
+  "dependencies": {
+    "icqq": "^0.6.10"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

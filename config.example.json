@@ -1,0 +1,44 @@
+{
+  "adapterApi": "https://bot.ziyi.asia/api/adapters",
+  "pluginApi": "https://bot.ziyi.asia/api/plugins",
+  "webui": {
+    "enable": true,
+    "host": "127.0.0.1",
+    "port": 8080
+  },
+  "hotReload": true,
+  "bots": [
+    {
+      "botId": "OneBot",
+      "type": "onebot11",
+      "mode": "ws_reverse",
+      "port": 8080,
+      "path": "/onebot",
+      "ignoreSelf": true,
+      "enable": false
+    },
+    {
+      "botId": "QQ",
+      "type": "qq",
+      "appId": "你的AppID",
+      "appSecret": "你的AppSecret",
+      "intents": 33554432,
+      "reconnectDelay": 5000,
+      "ignoreSelf": true,
+      "enable": false
+    },
+    {
+      "botId": "TG",
+      "type": "telegram",
+      "token": "你的BotToken",
+      "ignoreSelf": true,
+      "enable": false
+    }
+  ],
+  "plugins": {
+    "example_demo": {
+      "enable": false,
+      "apis": []
+    }
+  }
+}

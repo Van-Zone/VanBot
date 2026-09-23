@@ -1,0 +1,17 @@
+{
+  "name": "@vanbotjs/adapter-wechatferry",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WeChatFerry 微信个人号适配器（纯 Node.js，基于 wechatferry npm 包）",
+  "type": "module",
+  "vanbotAdapter": "wechatferry",
+  "dependencies": {
+    "wechatferry": "^0.0.26",
+    "file-box": "^1.4.15"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

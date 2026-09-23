@@ -1,0 +1,14 @@
+{
+  "name": "@vanbotjs/adapter-wechat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "微信服务号/公众号适配器",
+  "type": "module",
+  "vanbotAdapter": "wechat",
+  "dependencies": {},
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

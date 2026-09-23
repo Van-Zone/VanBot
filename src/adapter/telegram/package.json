@@ -1,0 +1,14 @@
+{
+  "name": "@vanbotjs/adapter-telegram",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Telegram 官方机器人适配器（Bot API，全局 fetch，无外部依赖）",
+  "type": "module",
+  "vanbotAdapter": "telegram",
+  "dependencies": {},
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

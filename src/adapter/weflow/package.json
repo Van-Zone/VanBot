@@ -1,0 +1,14 @@
+{
+  "name": "@vanbotjs/adapter-weflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WeFlow 微信个人号适配器（基于本地 HTTP API）",
+  "type": "module",
+  "vanbotAdapter": "weflow",
+  "dependencies": {},
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

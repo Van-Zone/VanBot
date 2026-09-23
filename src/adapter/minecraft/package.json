@@ -1,0 +1,18 @@
+{
+  "name": "@vanbotjs/adapter-minecraft",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minecraft 适配器（mineflayer 机器人）",
+  "type": "module",
+  "vanbotAdapter": "minecraft",
+  "dependencies": {
+    "mineflayer": "^4.38.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "vec3": "^0.2.0"
+  },
+  "files": [
+    "client.ts",
+    "converter.ts",
+    "types.ts"
+  ]
+}

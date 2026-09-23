@@ -1,0 +1,14 @@
+{
+  "name": "vanbotjs-docs",
+  "version": "1.0.0",
+  "description": "VanBotJS 文档站（vitepress，复刻 keli.viki.moe 风格）",
+  "private": true,
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "dependencies": {
+    "vitepress": "^1.6.4"
+  }
+}

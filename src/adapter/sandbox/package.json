@@ -1,0 +1,12 @@
+{
+  "name": "@vanbotjs/adapter-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "内置沙盒适配器（纯内存/本地网页模拟群聊私聊，无外部依赖，用于调试与单测）",
+  "type": "module",
+  "vanbotAdapter": "sandbox",
+  "dependencies": {},
+  "files": [
+    "client.ts"
+  ]
+}
