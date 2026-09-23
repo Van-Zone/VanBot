@@ -1,14 +1,9 @@
 <div align="center">
 
-<img src="http://bot.ziyi.asia/vanbot_logo.png" alt="VanBotJS" width="120">
-
-# VanBotJS
+![LOGO](http://bot.ziyi.asia/VanBot_logo.png)
 
 **多平台机器人框架** · 一个插件跑全平台
 
-[![GitHub Stars](https://img.shields.io/github/stars/ZiYiQuQ/VanBot?style=flat-square&logo=github&color=yellow)](https://github.com/ZiYiQuQ/VanBot)
-[![GitHub Forks](https://img.shields.io/github/forks/ZiYiQuQ/VanBot?style=flat-square&logo=github&color=green)](https://github.com/ZiYiQuQ/VanBot)
-[![Issues](https://img.shields.io/github/issues/ZiYiQuQ/VanBot?style=flat-square&logo=github)](https://github.com/ZiYiQuQ/VanBot/issues)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg?style=flat-square)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![Version](https://img.shields.io/badge/version-1.0.0-8A2BE2?style=flat-square)]()
@@ -32,33 +27,21 @@
 | 🖥️ **内置 WebUI 控制台** | 系统状态、机器人 / 插件启停，浏览器即可管理 |
 | 🪶 **零重型绑定** | 平台 SDK 全部懒加载，未安装或平台不支持时只跳过对应适配器，不拖垮框架 |
 
-## 🌐 支持的平台
+## 🌐 支持的平台及通信协议
 
 > 通过社区适配器按需安装，内核本身不绑定任何平台。
 
-**即时通讯**
-
-![QQ](https://img.shields.io/badge/QQ-icqq%20%7C%20官方机器人-12B7F5?style=flat-square&logo=tencentqq)
-![微信](https://img.shields.io/badge/%E5%BE%AE%E4%BF%A1-wechat_db%20%7C%20wechatferry%20%7C%20weflow-07C160?style=flat-square&logo=wechat)
-![微信公众号](https://img.shields.io/badge/%E5%85%AC%E4%BC%97%E5%8F%B7-weixin_oc%20%7C%20wechat-07C160?style=flat-square)
+![QQ](https://img.shields.io/badge/QQ-qq-12B7F5?style=flat-square&logo=tencentqq)
+![微信](https://img.shields.io/badge/微信-wechat-07C160?style=flat-square&logo=wechat)
 ![Telegram](https://img.shields.io/badge/Telegram-telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white)
 ![Discord](https://img.shields.io/badge/Discord-discord-5865F2?style=flat-square&logo=discord&logoColor=white)
 ![KOOK](https://img.shields.io/badge/KOOK-kook-7433FF?style=flat-square)
-
-**通信协议**
-
-![OneBot11](https://img.shields.io/badge/OneBot11-onebot11-FF6B6B?style=flat-square)
-![Satori](https://img.shields.io/badge/Satori-satori-FF6B6B?style=flat-square)
-[![Milky](https://img.shields.io/badge/Milky-Protocol-FFA500?style=flat-square)](https://milky.ntqqrev.org/)
-
-**内容 / 直播 / 游戏**
-
 ![抖音](https://img.shields.io/badge/%E6%8A%96%E9%9F%B3-douyin-000000?style=flat-square&logo=tiktok)
 ![B站直播](https://img.shields.io/badge/B%E7%AB%99%E7%9B%B4%E6%92%AD-bilibili_live-00A1D6?style=flat-square&logo=bilibili)
 ![Minecraft](https://img.shields.io/badge/Minecraft-minecraft-62B47A?style=flat-square&logo=minecraft&logoColor=white)
-
-**开发 / 测试**
-
+![OneBot11](https://img.shields.io/badge/OneBot11-onebot11-FF6B6B?style=flat-square)
+![Satori](https://img.shields.io/badge/Satori-satori-FF6B6B?style=flat-square)
+[![Milky](https://img.shields.io/badge/Milky-milky-FFA500?style=flat-square)](https://milky.ntqqrev.org/)
 ![Sandbox](https://img.shields.io/badge/Sandbox-sandbox-999?style=flat-square)
 
 ## 🚀 快速开始
@@ -90,7 +73,6 @@ van adapter list
 
 # 2. 安装需要的平台（自动安装该适配器依赖）
 van adapter install qq
-van adapter install telegram
 
 # 3. 编辑 config.json，填入对应平台凭据并把 enable 改为 true
 
@@ -139,11 +121,6 @@ export default definePlugin({
 
 详见文档站「开发」章节。
 
-## 📖 文档
-
-- 📚 **文档站**：http://bot.ziyi.asia
-- 🧪 **内核单元测试**：`npm test`
-
 ## 📁 项目结构
 
 ```
@@ -160,6 +137,7 @@ test/          内核单元测试
 
 ## 💬 社区与交流
 
+- **文档站**：http://bot.ziyi.asia
 - **QQ 官方群**：[1019070322](https://qm.qq.com/q/7jXfN4yGzB) — 问题反馈、插件分享、适配器开发交流
 - **GitHub Issues**：[提交 Bug / 功能建议](https://github.com/ZiYiQuQ/VanBot/issues)
 
