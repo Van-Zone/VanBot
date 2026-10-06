@@ -68,6 +68,10 @@ export class PluginContext {
     this.name = name
   }
 
+  get skillCount(): number {
+    return this.skillNames.size + this.pendingSkills.length
+  }
+
   // 定时器（框架封装，卸载时自动清理）
 
   setTimeout(fn: (...args: any[]) => void, ms?: number, ...args: any[]): any {

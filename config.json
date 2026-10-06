@@ -1,0 +1,24 @@
+{
+  "adapterApi": "http://bot.ziyi.asia/api/adapters",
+  "pluginApi": "http://bot.ziyi.asia/api/plugins",
+  "webui": {
+    "enable": true,
+    "host": "127.0.0.1",
+    "port": 8888
+  },
+  "hotReload": true,
+  "bots": [
+    {
+      "botId": "OneBot",
+      "type": "onebot11",
+      "mode": "ws_reverse",
+      "port": 8080,
+      "path": "/onebot/v11/ws",
+      "ignoreSelf": true,
+      "enable": true
+    }
+  ],
+  "plugins": {
+    "keyword": "true"
+  }
+}

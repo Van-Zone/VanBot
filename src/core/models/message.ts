@@ -12,6 +12,8 @@ export type MsgSegmentType =
   | "rps"
   | "poke"
   | "json"
+  | "ark"
+  | "embed"
   | "music"
   | "markdown"
   | "button"
@@ -77,6 +79,12 @@ export class MessageSegment implements IMsgSegment {
   }
   static json(data: string): MessageSegment {
     return new MessageSegment("json", { data })
+  }
+  static ark(data: Record<string, any>): MessageSegment {
+    return new MessageSegment("ark", data as Record<string, string | number>)
+  }
+  static embed(data: Record<string, any>): MessageSegment {
+    return new MessageSegment("embed", data as Record<string, string | number>)
   }
   static music(data: Record<string, any>): MessageSegment {
     return new MessageSegment("music", data)

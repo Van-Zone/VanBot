@@ -38,6 +38,7 @@ export interface PluginStatus {
   // 是否已加载（plugin 目录存在该文件）
   loaded: boolean
   enabled: boolean
+  skills: number
 }
 
 // 系统信息（CPU/内存/运行时间）

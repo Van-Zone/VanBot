@@ -67,19 +67,39 @@ export class OneBot11Adapter extends BaseAdapter {
         console.log(`[${this.botId}] 旧WS服务已关闭，释放端口`)
       })
     }
+    if (this.httpServer) {
+      this.httpServer.close()
+      this.httpServer = undefined
+    }
 
-    const wss = new WebSocketServer({ port: this.cfg.port })
+    const server = http.createServer((req, res) => {
+      res.writeHead(404)
+      res.end()
+    })
+    this.httpServer = server
+
+    const wss = new WebSocketServer({ noServer: true })
     this.wss = wss
 
-    wss.on("connection", (ws, req) => {
-      if (req.url !== this.cfg.path) {
-        return ws.close(1008, "path not match")
+    server.on("upgrade", (req, socket, head) => {
+      const pathname = req.url?.split("?")[0]
+      if (pathname !== this.cfg.path) {
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n")
+        socket.destroy()
+        return
       }
       const authHeader = req.headers.authorization
       if (this.cfg.token && authHeader !== `Bearer ${this.cfg.token}`) {
-        return ws.close(1008, "token invalid")
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
+        socket.destroy()
+        return
       }
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req)
+      })
+    })
 
+    wss.on("connection", (ws) => {
       this.ws = ws
       this.connected = true
       this.bindWsEvents()
@@ -90,7 +110,9 @@ export class OneBot11Adapter extends BaseAdapter {
       console.error(`[${this.botId}] WS服务监听异常：`, err)
     })
 
-    console.log(`[${this.botId}] OneBot11 反向WS监听 | 端口:${this.cfg.port} 路径:${this.cfg.path}`)
+    server.listen(this.cfg.port, () => {
+      console.log(`[${this.botId}] OneBot11 反向WS监听 | 端口:${this.cfg.port} 路径:${this.cfg.path}`)
+    })
   }
 
   private async startWsClient(): Promise<void> {

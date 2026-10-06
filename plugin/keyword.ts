@@ -51,6 +51,35 @@ async function sendMsgCtx(
 const ROOT_DIR = process.cwd();
 const PLUGIN_DATA = path.join(ROOT_DIR, "Van_keyword");
 const CONFIG_FILE_PATH = path.join(PLUGIN_DATA, "config.json");
+const DEFAULT_CONFIG_URL = "http://bot.ziyi.asia/JSver/data/config.json";
+
+// 配置文件不存在时自动从远程拉取默认配置
+let configReady: Promise<void> | null = null;
+async function ensureConfig(): Promise<void> {
+    if (configReady) return configReady;
+    configReady = (async () => {
+        try {
+            await fs.access(CONFIG_FILE_PATH);
+        } catch {
+            console.log("[keyword] config.json 不存在，正在从远程拉取默认配置...");
+            try {
+                await fs.mkdir(PLUGIN_DATA, { recursive: true });
+                const defaultCfg = await req(DEFAULT_CONFIG_URL);
+                if (defaultCfg && defaultCfg.trim().startsWith("{")) {
+                    await fs.writeFile(CONFIG_FILE_PATH, defaultCfg, "utf-8");
+                    console.log("[keyword] 默认 config.json 已创建");
+                } else {
+                    await fs.writeFile(CONFIG_FILE_PATH, "{}", "utf-8");
+                    console.log("[keyword] 远程配置不可用，已创建空 config.json");
+                }
+            } catch (e) {
+                await fs.writeFile(CONFIG_FILE_PATH, "{}", "utf-8");
+                console.warn("[keyword] 创建默认 config.json 失败，已写入空配置:", e);
+            }
+        }
+    })();
+    return configReady;
+}
 // 发送变量 (发送消息ID)
 const global_message_ids: Record<string, Record<string, number | undefined>> = {};
 // 词条变量 (触发词条ID)
@@ -2197,7 +2226,7 @@ async function parseBracketStr(
             {
                 key: "lexused",
                 build: async (p) => {
-                    await coins_operation(selfId, groupId, "0", `||${p[1]}||`, `USED`);
+                    await coins_operation(selfId, p[2], "0", `||${p[1]}||`, `USED`);
                     return "";
                 }
             },
@@ -2252,7 +2281,38 @@ async function parseBracketStr(
                     return "";
                 }
             },
-            { key: "botid", build: () => String(event.raw.sender?.nickname ?? "") },
+            {
+                key: "time",
+                build: async (p) => {
+                    const ts = event.raw.time ?? "";
+                    const d = new Date(ts * 1000);
+                    const format = p.slice(1).join(".");
+                    if (format && ts) {
+                        const week = ['日', '一', '二', '三', '四', '五', '六'];
+                        const pad = (n: any) => String(n).padStart(2, '0');
+                        const map: any = {
+                            'Y': d.getFullYear(),          // 年 2026
+                            'y': String(d.getFullYear()).slice(2), // 年 26
+                            'M': pad(d.getMonth() + 1),    // 月 01-12
+                            'D': pad(d.getDate()),         // 日 01-31
+                            'H': pad(d.getHours()),        // 时 00-23
+                            'h': pad(d.getHours() % 12 || 12), // 时 12小时制
+                            'm': pad(d.getMinutes()),      // 分
+                            's': pad(d.getSeconds()),      // 秒
+                            'S': String(d.getMilliseconds()).padStart(3, '0'), // 毫秒
+                            'W': '星期' + week[d.getDay()], // 星期X
+                            'w': week[d.getDay()],          // 只取 日一二三
+                            'q': Math.floor(d.getMonth() / 3) + 1, // 季度 1-4
+                            'A': d.getHours() < 12 ? '上午' : '下午', // 上下午
+                            'Z': -d.getTimezoneOffset() / 60 // 时区偏移 +8
+                        };
+                        return format.replace(/[YyMDHhmsSWwqAZ]/g, k => map[k]);
+                    } else {
+                        return ts;
+                    }
+                }
+            },
+            { key: "botid", build: () => String(event.botId ?? "") },
             { key: "selfid", build: () => String(event.selfId ?? "") },
             { key: "userid", build: () => String(event.userId ?? "") },
             { key: "groupid", build: () => String(event.groupId ?? "") },
@@ -2261,7 +2321,6 @@ async function parseBracketStr(
             { key: "userrole", build: () => String(event.raw.sender?.role ?? "") },
             { key: "groupname", build: () => String(event.raw.group_name ?? "") },
             { key: "msgid", build: () => String(event.raw.message_id ?? "") },
-            { key: "time", build: () => String(event.raw.time ?? "") },
             { key: "newline", build: () => "\n" },
             { key: "lexid", build: () => String(global_lexicon_ids[selfId].hit) },
             { key: "lextotal", build: () => String(global_lexicon_totals[selfId].count) },
@@ -2582,6 +2641,7 @@ async function keywordOnEvent(
         const uid = event.userId ? String(event.userId) : "";
         const gid = event.groupId ? String(event.groupId) : "";
 
+        await ensureConfig();
         const cfg = await fileCacheIO(CONFIG_FILE_PATH, "r") as any;
         const ownerList = cfg.OWNER_LIST || [];
         const masterId = await coins_operation(selfId, "0", "0", `0`, `MASTER`);
@@ -2605,24 +2665,25 @@ async function keywordOnEvent(
 
             // 主人号配置
             if (masterList.length == 0) {
-                if (transStr.startsWith('#设置主人号 ')) {
-                    let masterid = transStr.replace("#设置主人号 ", "");
+                if (transStr.startsWith('#设置主人号')) {
+                    let masterid = transStr.replace("#设置主人号", "") || uid;
                     await coins_operation(selfId, "0", "0", `||${masterid}||`, `MASTER`);
                     await sendMsgCtx(bot, event, { group_id: gid, user_id: uid }, `已成功将${masterid}设置为主人号`)
                     botLog(selfId, "<-", "插件", selfId, `配置主人号成功，当前主人号: ${masterid}`);
                     return;
                 } else {
-                    botLog(selfId, "<-", "插件", selfId, `配置主人号指令：#设置主人号 你的QQ号(当前用户id: ${uid})(多个主人号用英文逗号隔开)`);
+                    botLog(selfId, "<-", "插件", selfId, `配置主人号指令：#设置主人号[用户id] (无用户id默认为当前用户为主人号，多个主人号用英文逗号隔开)`);
+                    botLog(selfId, "<-", "插件", selfId, `当前用户id: ${uid}`);
                 }
             }
 
-            let lexUsed = await coins_operation(selfId, targetId, "0", `0`, `USED`);
+            let lexUsed = await coins_operation(selfId, gid, "0", `0`, `USED`);
             lexUsed = lexUsed == "0" ? "default" : lexUsed;
 
             const matchResult = await LexiconManager(selfId, lexUsed, "get", { value: transStr }) as any;
             if (matchResult && matchResult !== "") {
                 // cards
-                let cards = await req(`http://bot.ziyi.asia/cards/?action=auth&key=${lexUsed}&qq=${selfId}`)
+                let cards = await req(`http://bot.ziyi.asia/cards/?action=auth&key=${lexUsed}&qq=${selfId}&type=text`)
                 if (cards == "no") {
                     botLog(selfId, "<-", "插件", selfId, `【${lexUsed}】词库卡密授权已到期！`);
                     return;

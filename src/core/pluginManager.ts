@@ -84,10 +84,6 @@ export class PluginManager {
 
     for (const file of tsFiles) {
       const name = file.replace(/\.ts$/, "")
-      if (!entryEnabled(this.enabledMap[name])) {
-        console.log(`[插件] ${name} 已在配置中禁用，跳过加载`)
-        continue
-      }
       try {
         await this.loadPlugin(name, join(this.pluginDir, file))
       } catch (err) {
@@ -292,18 +288,25 @@ export class PluginManager {
   }
 
   // 列出全部插件（含未加载/禁用的），供代理 API 的 plugin.list 使用
-  listAllPlugins(): { name: string; loaded: boolean; enabled: boolean }[] {
+  listAllPlugins(): { name: string; loaded: boolean; enabled: boolean; skills: number }[] {
     let files: string[] = []
     try {
       files = readdirSync(this.pluginDir).filter((f) => f.endsWith(".ts") && !f.startsWith("_"))
     } catch {
       // 插件目录不可读时忽略
     }
-    return files.map((f) => {
+    const result = new Map<string, { name: string; loaded: boolean; enabled: boolean; skills: number }>()
+    for (const f of files) {
       const name = f.replace(/\.ts$/, "")
       const p = this.plugins.get(name)
-      return { name, loaded: !!p, enabled: !!p?.enabled }
-    })
+      result.set(name, { name, loaded: !!p, enabled: !!p?.enabled, skills: p?.vanbot?.ctx?.skillCount ?? 0 })
+    }
+    for (const name of Object.keys(this.enabledMap)) {
+      if (!result.has(name)) {
+        result.set(name, { name, loaded: false, enabled: false, skills: 0 })
+      }
+    }
+    return [...result.values()]
   }
 
   // 启动文件监听实现热加载

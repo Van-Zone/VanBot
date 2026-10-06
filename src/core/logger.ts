@@ -9,7 +9,7 @@ function getTime() {
   const h = String(d.getHours()).padStart(2, "0")
   const mi = String(d.getMinutes()).padStart(2, "0")
   const s = String(d.getSeconds()).padStart(2, "0")
-  return `${m}-${day} ${h}:${s}`
+  return `${m}-${day} ${h}:${mi}`
 }
 
 // 输出一条机器人收发日志

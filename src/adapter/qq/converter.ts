@@ -1,320 +1,445 @@
 import type { BotEvent } from "../../core/models/event.js"
+import { MessageSegment, type MessageChain } from "../../core/models/message.js"
+import type { QqGatewayPayload, QqMessageData } from "./types.js"
+import { QQ_INTERACTION_TYPE } from "./types.js"
 import type { QqAdapter } from "./client.js"
 
-// 去掉 QQ 消息内容里的 @机器人 标签，例如 <@!botid>你好
-export function stripQqMentions(text: string): string {
-  return (text ?? "")
-    .replace(/<@![^>]*>/g, "")
-    .replace(/<@[^>]*>/g, "")
-    .trim()
-}
+// 将 QQ 官方机器人事件转换为统一 BotEvent
+// 事件来源（intents）：
+// - 群@消息 GROUP_AT_MESSAGE_CREATE / 全量 GROUP_MESSAGE_CREATE（1<<25）
+// - 单聊 C2C_MESSAGE_CREATE（1<<25）
+// - 频道 @消息 AT_MESSAGE_CREATE / 全量 MESSAGE_CREATE（1<<30 或 1<<9）
+// - 频道私信 DIRECT_MESSAGE_CREATE（1<<12）
+// - 按钮/菜单交互 INTERACTION_CREATE（1<<26）
+// - 群机器人进退、群成员变动、好友、主动消息开关、订阅状态、消息审核等通知
+export function convertQqEvent(
+  payload: QqGatewayPayload,
+  botId: string,
+  selfId: string,
+  adapter: QqAdapter,
+): void {
+  const t = payload.t ?? ""
+  const d = (payload.d ?? {}) as any
+  const topEventId = String(payload.id ?? "")
 
-// 框架统一消息段 → QQ 文本内容（仅取 text 段，其他段尽量转文本）
-export function segmentsToQqText(
-  segments: Array<{ type: string; data: Record<string, any> }>
-): string {
-  let text = ""
-  for (const seg of segments) {
-    if (seg.type === "text") {
-      text += String(seg.data.text ?? "")
-    } else if (seg.type === "at") {
-      text += `@${seg.data.name ?? seg.data.qq ?? ""} `
-    } else if (seg.type === "face") {
-      text += `[表情${seg.data.id ?? ""}]`
-    }
-    // image/record/video 等由图片/媒体字段处理
-  }
-  return text
-}
-
-// QQ 消息事件 → 框架统一事件并派发
-// 群聊/单聊/频道消息统一转为 group_message 或 private_message
-// 新版事件结构（GROUP_AT_MESSAGE_CREATE / GROUP_MESSAGE_CREATE / C2C_MESSAGE_CREATE）：
-// d.author.username       用户昵称（群聊有值；单聊可能为空）
-// d.author.member_openid  群成员 openid（群聊）
-// d.author.user_openid    用户 openid（单聊）
-// d.content               文本内容（已去除@机器人前缀）
-// d.message_type          0=纯文本 3=ARK卡片 101=并行 102=聊天记录 103=引用
-// d.attachments[]         附件（image/jpeg|png|gif、video/mp4、voice、file）
-// d.mentions[]            @的用户列表
-// d.msg_elements[]        消息元素（引用消息含被引用内容）
-export function convertQqEvent(raw: any, botId: string, selfId: string, adapter: QqAdapter): void {
-  const eventType: string = raw.t ?? ""
-  const d = raw.d ?? {}
-
-  if (eventType === "GROUP_AT_MESSAGE_CREATE" || eventType === "GROUP_MESSAGE_CREATE") {
-    // 群里 @ 机器人 / 群消息（全量模式）
-    const author = d.author ?? {}
-    const userOpenid = author.user_openid ?? author.id ?? ""
-    const memberOpenid = author.member_openid ?? ""
-    const nickname = String(author.username ?? author.nickname ?? "")
-    const event: BotEvent = {
-      botId,
-      selfId,
-      userId: userOpenid || memberOpenid,
-      groupId: d.group_openid ?? "",
-      message: qqMsgToSegments(d),
+  // ===== 消息事件 =====
+  if (t === "GROUP_AT_MESSAGE_CREATE" || t === "GROUP_MESSAGE_CREATE") {
+    const event = buildMessageEvent({
+      payload, d, botId, selfId, chatType: 1,
+      groupId: String(d.group_openid ?? ""),
+      userId: String(d.author?.member_openid ?? ""),
       postType: "group_message",
-      raw: raw as unknown as Record<string, any>,
-    }
-    ;(event.raw as any).sender = {
-      user_id: userOpenid || memberOpenid,
-      nickname,
-      card: "",
-      role: author.member_role ?? "member",
-      member_openid: memberOpenid,
-      user_openid: userOpenid,
-      username: nickname,
-      is_bot: !!author.bot,
-    }
-    ;(event.raw as any).message_id = d.id ?? ""
-    ;(event.raw as any).time = d.timestamp ? Math.floor(new Date(d.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000)
-    ;(event.raw as any).platform = "qq-official"
+    })
     adapter.cacheMessage(event)
     adapter.emitEvent("group_message", event)
     return
   }
 
-  if (eventType === "C2C_MESSAGE_CREATE") {
-    // 单聊（用户直接找机器人）
-    const author = d.author ?? {}
-    const userOpenid = author.user_openid ?? author.id ?? ""
-    const nickname = String(author.username ?? author.nickname ?? "")
-    const event: BotEvent = {
-      botId,
-      selfId,
-      userId: userOpenid,
-      groupId: undefined,
-      message: qqMsgToSegments(d),
+  if (t === "C2C_MESSAGE_CREATE") {
+    const event = buildMessageEvent({
+      payload, d, botId, selfId, chatType: 2,
+      groupId: "",
+      userId: String(d.author?.user_openid ?? ""),
       postType: "private_message",
-      raw: raw as unknown as Record<string, any>,
-    }
-    ;(event.raw as any).sender = {
-      user_id: userOpenid,
-      nickname,
-      card: "",
-      role: "user",
-      user_openid: userOpenid,
-      username: nickname,
-      is_bot: !!author.bot,
-    }
-    ;(event.raw as any).message_id = d.id ?? ""
-    ;(event.raw as any).time = d.timestamp ? Math.floor(new Date(d.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000)
-    ;(event.raw as any).platform = "qq-official"
+    })
     adapter.cacheMessage(event)
     adapter.emitEvent("private_message", event)
     return
   }
 
-  if (eventType === "MESSAGE_CREATE" || eventType === "AT_MESSAGE_CREATE") {
-    // 频道消息（公域，旧版结构）
-    const event: BotEvent = {
-      botId,
-      selfId,
-      userId: d.author?.id ?? "",
-      groupId: d.channel_id ?? "",
-      message: qqMsgToSegments(d),
+  if (t === "AT_MESSAGE_CREATE" || t === "MESSAGE_CREATE") {
+    const event = buildMessageEvent({
+      payload, d, botId, selfId, chatType: 0,
+      groupId: String(d.channel_id ?? ""),
+      userId: String(d.author?.id ?? d.author?.user_openid ?? ""),
       postType: "group_message",
-      raw: raw as unknown as Record<string, any>,
-    }
-    ;(event.raw as any).sender = {
-      user_id: d.author?.id ?? "",
-      nickname: d.author?.username ?? "",
-      card: "",
-      role: "member",
-    }
-    ;(event.raw as any).message_id = d.id ?? ""
-    ;(event.raw as any).time = d.timestamp ? Math.floor(new Date(d.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000)
-    ;(event.raw as any).platform = "qq-official"
+    })
     adapter.cacheMessage(event)
     adapter.emitEvent("group_message", event)
     return
   }
 
-  if (eventType === "INTERACTION_CREATE") {
-    // 按钮/交互回调（用户点击 markdown 附带的按钮）
-    const dd = d.data ?? {}
-    const resolved = dd.resolved ?? {}
-    const clickUser = String(
-      resolved.user?.id ?? d.user?.id ?? d.author?.user_openid ?? d.member?.user?.id ?? ""
-    )
-    const groupContext = d.group_openid ?? d.channel_id ?? d.guild_id
-    const buttonId = String(dd.button_id ?? resolved.button_data?.id ?? "")
-    const buttonLabel = String(resolved.button_data?.label ?? dd.label ?? "")
-    const event: BotEvent = {
-      botId,
-      selfId,
-      userId: clickUser,
-      groupId: groupContext ? String(groupContext) : undefined,
-      message: [],
-      postType: "notice",
-      raw: raw as unknown as Record<string, any>,
-    }
-    ;(event.raw as any).notice_type = "INTERACTION_CREATE"
-    ;(event.raw as any).button_id = buttonId
-    ;(event.raw as any).button_label = buttonLabel
-    ;(event.raw as any).button_data = dd
-    ;(event.raw as any).interaction_id = d.id ?? ""
-    ;(event.raw as any).time = Math.floor(Date.now() / 1000)
-    ;(event.raw as any).platform = "qq-official"
+  if (t === "DIRECT_MESSAGE_CREATE") {
+    const event = buildMessageEvent({
+      payload, d, botId, selfId, chatType: 0,
+      groupId: "",
+      userId: String(d.author?.id ?? d.author?.user_openid ?? ""),
+      postType: "private_message",
+    })
+    // 频道私信保留 channel_id / guild_id 于 raw
+    Object.assign(event.raw as object, { channel_id: String(d.channel_id ?? ""), guild_id: String(d.guild_id ?? "") })
+    adapter.cacheMessage(event)
+    adapter.emitEvent("private_message", event)
+    return
+  }
+
+  // ===== 交互事件（按钮 / 菜单 / 反馈等）=====
+  if (t === "INTERACTION_CREATE") {
+    convertInteraction(payload, botId, selfId, adapter)
+    return
+  }
+
+  // ===== 群机器人被加 / 被移出 =====
+  if (t === "GROUP_ADD_ROBOT" || t === "GROUP_DEL_ROBOT") {
+    const event = baseNotice(botId, selfId, "group_robot", t === "GROUP_ADD_ROBOT" ? "add" : "remove", d, topEventId, 1)
+    event.groupId = String(d.group_openid ?? "")
+    event.userId = String(d.op_member_openid ?? "")
     adapter.emitEvent("notice", event)
     return
   }
 
-  // 其余事件（加群/退群/加好友等）作为 notice 派发，插件可按需监听
-  const noticeEvent: BotEvent = {
-    botId,
-    selfId,
-    userId: d.author?.user_openid ?? d.author?.id ?? "",
-    groupId: d.group_openid ?? d.channel_id ?? undefined,
-    message: [],
-    postType: "notice",
-    raw: raw as unknown as Record<string, any>,
+  // ===== 群成员进退（1<<24）=====
+  if (t === "GROUP_MEMBER_ADD" || t === "GROUP_MEMBER_REMOVE") {
+    const event = baseNotice(botId, selfId, "group_member", t === "GROUP_MEMBER_ADD" ? "increase" : "decrease", d, topEventId, 1)
+    event.groupId = String(d.group_openid ?? "")
+    event.userId = String(d.member_openid ?? "")
+    adapter.emitEvent("notice", event)
+    return
   }
-  ;(noticeEvent.raw as any).notice_type = eventType
-  ;(noticeEvent.raw as any).platform = "qq-official"
-  adapter.emitEvent("notice", noticeEvent)
+
+  // ===== 用户申请加群（1<<24）=====
+  if (t === "GROUP_JOIN_REQUEST") {
+    const event = baseNotice(botId, selfId, "group_request", "add", d, topEventId, 1)
+    event.groupId = String(d.group_openid ?? "")
+    event.userId = String(d.member_openid ?? "")
+    Object.assign(event.raw as object, {
+      join_request_id: String(d.join_request_id ?? ""),
+      comment: String(d.verify_info?.verify_message ?? ""),
+      apply_source: String(d.apply_source ?? ""),
+      invited_by: String(d.invited_by ?? ""),
+      flag: String(d.join_request_id ?? ""),
+    })
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // ===== 好友增删 =====
+  if (t === "FRIEND_ADD" || t === "FRIEND_DEL") {
+    const event = baseNotice(botId, selfId, "friend", t === "FRIEND_ADD" ? "increase" : "decrease", d, topEventId, 2)
+    event.userId = String(d.openid ?? "")
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // ===== 单聊主动消息开关 =====
+  if (t === "C2C_MSG_RECEIVE" || t === "C2C_MSG_REJECT") {
+    const event = baseNotice(botId, selfId, "c2c_setting", t === "C2C_MSG_RECEIVE" ? "receive" : "reject", d, topEventId, 2)
+    event.userId = String(d.openid ?? "")
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // ===== 群主动消息开关 =====
+  if (t === "GROUP_MSG_RECEIVE" || t === "GROUP_MSG_REJECT") {
+    const event = baseNotice(botId, selfId, "group_setting", t === "GROUP_MSG_RECEIVE" ? "receive" : "reject", d, topEventId, 1)
+    event.groupId = String(d.group_openid ?? "")
+    event.userId = String(d.op_member_openid ?? "")
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // ===== 订阅消息模板授权状态 =====
+  if (t === "SUBSCRIBE_MESSAGE_STATUS") {
+    const event = baseNotice(botId, selfId, "subscribe_status", "", d, topEventId, d.group_openid ? 1 : 2)
+    event.groupId = String(d.group_openid ?? "")
+    event.userId = String(d.openid ?? "")
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // ===== 频道消息审核结果（1<<27）=====
+  if (t === "MESSAGE_AUDIT_PASS" || t === "MESSAGE_AUDIT_REJECT") {
+    const event = baseNotice(botId, selfId, "message_audit", t === "MESSAGE_AUDIT_PASS" ? "pass" : "reject", d, topEventId, 0)
+    event.groupId = String(d.channel_id ?? "")
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // ===== 音频 / 论坛 / 其他频道通知：统一透传为 notice =====
+  if (
+    t === "AUDIO_START" || t === "AUDIO_FINISH" || t === "AUDIO_OFFLINE" ||
+    t === "FORUM_THREAD_CREATE" || t === "FORUM_THREAD_UPDATE" || t === "FORUM_THREAD_DELETE" ||
+    t === "FORUM_POST_CREATE" || t === "FORUM_POST_DELETE" ||
+    t === "FORUM_REPLY_CREATE" || t === "FORUM_REPLY_DELETE" ||
+    t === "FORUM_PUBLISH_AUDIT_RESULT" ||
+    t === "MESSAGE_REACTION_ADD" || t === "MESSAGE_REACTION_REMOVE" ||
+    t === "OPEN_FORUM_THREAD_CREATE" || t === "OPEN_FORUM_THREAD_UPDATE" ||
+    t === "OPEN_FORUM_THREAD_DELETE" || t === "OPEN_FORUM_POST_CREATE" ||
+    t === "OPEN_FORUM_POST_DELETE" || t === "OPEN_FORUM_REPLY_CREATE" ||
+    t === "OPEN_FORUM_REPLY_DELETE"
+  ) {
+    const event = baseNotice(botId, selfId, t.toLowerCase(), "", d, topEventId, 0)
+    event.groupId = String(d.channel_id ?? "")
+    event.userId = String(d.user_id ?? d.author?.id ?? "")
+    adapter.emitEvent("notice", event)
+    return
+  }
+
+  // 其余未识别事件忽略，避免向插件派发噪声
 }
 
-// QQ 消息内容 → 框架统一消息段
-// 支持：文本 / 图片 / 视频 / 语音(record) / 文件 / 引用消息 / @ / 表情 / ARK卡片
-// 新版消息（GROUP_AT_MESSAGE_CREATE / C2C_MESSAGE_CREATE）：
-// - message_type: 0=文本 3=ARK卡片 101=并行 102=聊天记录 103=引用
-// - attachments:  图片/视频/语音/文件附件
-// - msg_elements: 引用/聊天记录/并行消息的内容元素（递归）
-// - mentions:     @的用户列表
-// 旧版频道消息（MESSAGE_CREATE / AT_MESSAGE_CREATE）：
-// - msg_type: 2=图片 3=视频 4=语音 7=富媒体
-// - attachments: 同新版
-function qqMsgToSegments(d: any): Array<{ type: string; data: Record<string, any> }> {
-  const segments: Array<{ type: string; data: Record<string, any> }> = []
-  const msgType = d.message_type ?? d.msg_type ?? 0
+// 构建消息事件
+function buildMessageEvent(args: {
+  payload: QqGatewayPayload
+  d: QqMessageData
+  botId: string
+  selfId: string
+  chatType: number
+  groupId: string
+  userId: string
+  postType: "group_message" | "private_message"
+}): BotEvent {
+  const { d, botId, selfId, chatType, groupId, userId, postType, payload } = args
+  const message = buildMessageSegments(d)
+  const isGroup = postType === "group_message"
+  const event: BotEvent = {
+    botId,
+    selfId,
+    userId,
+    groupId: isGroup ? groupId : undefined,
+    message,
+    postType,
+    raw: {
+      // 消息 ID（被动回复 msg_id）；顶层事件 ID（event_id）
+      message_id: String(d.id ?? ""),
+      event_id: String(payload.id ?? ""),
+      chat_type: chatType,
+      platform: "qq-official",
+      sender: buildSender(d, chatType),
+      time: toUnixSeconds(d.timestamp),
+      group_openid: String(d.group_openid ?? ""),
+      user_openid: String(d.author?.user_openid ?? d.author?.id ?? ""),
+      guild_id: String(d.guild_id ?? ""),
+      channel_id: String(d.channel_id ?? ""),
+      raw_message: d,
+    },
+  }
+  return event
+}
+
+// 交互事件转换
+function convertInteraction(
+  payload: QqGatewayPayload,
+  botId: string,
+  selfId: string,
+  adapter: QqAdapter,
+): void {
+  const d = payload.d ?? {}
+  const interactionId = String(d.id ?? "")
+  const passiveEventId = String(payload.id ?? "")
+  const type = Number(d.type ?? 0)
+  const resolved = d.data?.resolved ?? {}
+  const groupOpenid = String(d.group_openid ?? "")
+  const memberOpenid = String(d.group_member_openid ?? "")
+  const userOpenid = String(d.user_openid ?? (d.member?.user?.id ?? ""))
+  const chatType = Number(d.chat_type ?? (groupOpenid ? 1 : userOpenid ? 2 : 0))
+
+  // 仅 type=11（内联按钮）/12（快捷菜单）需要回应；
+  // 必须立即 PUT /interactions/{interaction_id}，否则客户端一直 loading 直到超时。
+  // 回应只负责停止 loading，业务消息另以事件最外层 id 作为 event_id 走被动发送。
+  if ((type === QQ_INTERACTION_TYPE.INLINE_KEYBOARD || type === QQ_INTERACTION_TYPE.CALLBACK_COMMAND) && interactionId) {
+    void adapter.ackInteraction(interactionId, 0).catch((e: unknown) => {
+      console.error(`[${botId}] 交互回应失败: ${(e as Error)?.message ?? e}`)
+    })
+  }
+
+  const buttonData = String(resolved.button_data ?? resolved.data ?? "")
+  const message: MessageChain = buttonData ? [MessageSegment.text(buttonData)] : []
+
+  const event: BotEvent = {
+    botId,
+    selfId,
+    userId: chatType === 1 ? memberOpenid : userOpenid,
+    groupId: chatType === 1 ? groupOpenid : chatType === 0 ? String(d.channel_id ?? "") : undefined,
+    message,
+    postType: "notice",
+    raw: {
+      notice_type: "interaction",
+      sub_type: interactionSubType(type),
+      interaction_id: interactionId,
+      // 被动消息 event_id 取事件最外层 id（群 5 分钟 / 单聊 60 分钟窗口）
+      event_id: passiveEventId,
+      interaction_type: type,
+      chat_type: chatType,
+      platform: "qq-official",
+      resolved: {
+        button_id: String(resolved.button_id ?? resolved.feature_id ?? ""),
+        button_data: buttonData,
+        ...resolved,
+      },
+      group_openid: groupOpenid,
+      member_openid: memberOpenid,
+      user_openid: userOpenid,
+      guild_id: String(d.guild_id ?? ""),
+      channel_id: String(d.channel_id ?? ""),
+      time: toUnixSeconds(d.timestamp),
+      raw_event: d,
+    },
+  }
+  adapter.emitEvent("notice", event)
+}
+
+// 交互类型 → sub_type 语义
+function interactionSubType(type: number): string {
+  switch (type) {
+    case QQ_INTERACTION_TYPE.INLINE_KEYBOARD: return "button"
+    case QQ_INTERACTION_TYPE.CALLBACK_COMMAND: return "command"
+    case QQ_INTERACTION_TYPE.MESSAGE_FEEDBACK: return "feedback"
+    case QQ_INTERACTION_TYPE.CLEAR_SESSION: return "clear_session"
+    case QQ_INTERACTION_TYPE.STORY_CHANGE: return "story"
+    case QQ_INTERACTION_TYPE.MODEL_SWITCH: return "model_switch"
+    case QQ_INTERACTION_TYPE.USER_AUTHORIZE: return "user_authorize"
+    case QQ_INTERACTION_TYPE.GROUP_AUTHORIZE: return "group_authorize"
+    case QQ_INTERACTION_TYPE.GROUP_AUTHORIZE_CHANGE: return "group_authorize_change"
+    default: return "unknown"
+  }
+}
+
+// 通知事件基础结构
+function baseNotice(
+  botId: string,
+  selfId: string,
+  noticeType: string,
+  subType: string,
+  d: any,
+  topEventId: string,
+  chatType: number,
+): BotEvent {
+  return {
+    botId,
+    selfId,
+    userId: "",
+    message: [],
+    postType: "notice",
+    raw: {
+      notice_type: noticeType,
+      sub_type: subType,
+      event_id: String(d.id ?? topEventId ?? ""),
+      chat_type: chatType,
+      platform: "qq-official",
+      time: toUnixSeconds(d.timestamp ?? d.apply_at),
+      raw_event: d,
+    },
+  }
+}
+
+// 构建发送者信息
+function buildSender(d: QqMessageData, chatType: number): Record<string, unknown> {
+  const a = d.author ?? {}
+  if (chatType === 1) {
+    return {
+      user_id: String(a.member_openid ?? ""),
+      member_openid: String(a.member_openid ?? ""),
+      nickname: String(a.member_name ?? ""),
+      member_role: String(a.member_role ?? ""),
+      is_bot: !!a.bot,
+    }
+  }
+  if (chatType === 2) {
+    return {
+      user_id: String(a.user_openid ?? ""),
+      user_openid: String(a.user_openid ?? ""),
+      nickname: String(a.user_name ?? ""),
+      is_bot: !!a.bot,
+    }
+  }
+  return {
+    user_id: String(a.id ?? a.user_openid ?? ""),
+    nickname: String(a.username ?? a.member_name ?? ""),
+    avatar: String(a.avatar ?? ""),
+    is_bot: !!a.bot,
+    roles: Array.isArray(a.roles) ? a.roles : [],
+  }
+}
+
+// 由消息事件构建消息段：文本（含 @ 解析）+ 附件 + markdown/ark/embed + 引用
+function buildMessageSegments(d: QqMessageData): MessageChain {
+  const segments: MessageChain = []
   const content = String(d.content ?? "")
 
-  // 1) 引用消息（message_type=103）：msg_elements[0] 为被引用内容
-  const elements = Array.isArray(d.msg_elements) ? d.msg_elements : []
-  if (msgType === 103 && elements.length) {
-    const ref = elements[0]
-    // 被引用消息 ID：msg_idx（REFIDX_...）或 message_scene.ext 里的 ref_msg_idx
-    const refId = String(
-      ref.msg_idx ??
-      (Array.isArray(d.message_scene?.ext)
-        ? d.message_scene.ext.map((e: string) => String(e)).find((e: string) => e.startsWith("ref_msg_idx="))?.split("=")[1] ?? ""
-        : "") ??
-      ""
-    )
-    segments.push({
-      type: "reply",
-      data: {
-        id: refId || String(d.id ?? ""),        // 被引用消息 ID（segKeep 模板 [reply.{id}] 用）
-        text: String(ref.content ?? ""),         // 被引用消息正文（模板可改 [reply.{text}]）
-        name: ref.author?.username ?? "",        // 被引用消息发送者昵称
-        message_id: String(d.id ?? ""),          // 当前消息 ID
-      },
-    })
-  } else if (msgType === 102) {
-    // 聊天记录：合并各元素正文
-    const parts: string[] = []
-    const collect = (list: any[]) => {
-      for (const el of list ?? []) {
-        if (el?.content) parts.push(String(el.content))
-        if (Array.isArray(el.msg_elements)) collect(el.msg_elements)
-      }
-    }
-    collect(elements)
-    if (parts.length) segments.push({ type: "text", data: { text: parts.join("\n") } })
-  } else if (msgType === 101) {
-    // 并行消息：递归展开所有元素
-    const collect = (list: any[]) => {
-      for (const el of list ?? []) {
-        if (el?.content) {
-          const sub = qqMsgToSegments(el)
-          if (sub.length) segments.push(...sub)
-        }
-        if (Array.isArray(el.msg_elements)) collect(el.msg_elements)
-      }
-    }
-    collect(elements)
-  } else if (msgType === 3 && d.ark_data) {
-    // ARK 卡片消息：转 json 段（保留结构化数据）
-    segments.push({ type: "json", data: { data: JSON.stringify(d.ark_data) } })
+  // 解析 <@!id>/<@id> 提及为 at 段，其余作为文本
+  const mentionRe = /<@!?(\d+)>/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = mentionRe.exec(content)) !== null) {
+    if (m.index > last) pushText(content.slice(last, m.index))
+    segments.push(MessageSegment.at(m[1]))
+    last = m.index + m[0].length
+  }
+  if (last < content.length) pushText(content.slice(last))
+  function pushText(t: string): void {
+    const tt = t.trim()
+    if (tt) segments.push(MessageSegment.text(tt))
   }
 
-  // 2) 文本内容（去 @机器人 前缀；content 可能含 <img>/<emoji>/<a> 等标签，一并解析）
-  const text = stripQqMentions(content)
-  if (text) {
-    pushMarkdownTags(segments, text)
-  }
-
-  // 3) @ 的用户列表 → at 段
-  if (Array.isArray(d.mentions)) {
-    for (const m of d.mentions) {
-      if (!m) continue
-      segments.push({
-        type: "at",
-        data: { qq: m.user_openid ?? m.id ?? "", name: m.username ?? "" },
-      })
+  // 附件：群/C2C 附件 url 为相对路径，补 files.qlogo.cn 主机
+  for (const attachment of d.attachments ?? []) {
+    const rawUrl = String(attachment.url ?? "")
+    const url = /^https?:\/\//.test(rawUrl) ? rawUrl : `https://files.qlogo.cn${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`
+    const ct = String(attachment.content_type ?? "")
+    if (ct.startsWith("image") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(rawUrl)) {
+      segments.push(MessageSegment.image(url))
+    } else if (ct.startsWith("video") || /\.(mp4|mov)$/i.test(rawUrl)) {
+      segments.push(MessageSegment.video(url))
+    } else if (ct.startsWith("audio") || /\.(silk|amr|wav|mp3|flac)$/i.test(rawUrl)) {
+      segments.push(MessageSegment.record(url))
+    } else {
+      segments.push(MessageSegment.file({ url, name: String(attachment.filename ?? "file") }))
     }
   }
 
-  // 4) 附件（图片/视频/语音/文件）→ 媒体段
-  if (Array.isArray(d.attachments)) {
-    for (const att of d.attachments) {
-      if (!att || !att.url) continue
-      const ct = String(att.content_type ?? "").toLowerCase()
-      const url = String(att.url)
-      if (ct.startsWith("image")) {
-        segments.push({ type: "image", data: { url, file: url, name: att.filename ?? "" } })
-      } else if (ct === "voice" || ct.includes("audio")) {
-        const seg: Record<string, any> = { url, file: url, name: att.filename ?? "" }
-        if (att.voice_wav_url) seg.wav = String(att.voice_wav_url)
-        if (att.asr_refer_text) seg.asr = String(att.asr_refer_text)
-        segments.push({ type: "record", data: seg })
-      } else if (ct.includes("video")) {
-        segments.push({ type: "video", data: { url, file: url, name: att.filename ?? "" } })
-      } else if (ct === "file") {
-        segments.push({ type: "file", data: { url, file: url, name: att.filename ?? "" } })
-      } else {
-        segments.push({ type: "file", data: { url, file: url, name: att.filename ?? att.url ?? "" } })
-      }
-    }
+  // markdown / ark / embed / 引用
+  if (d.markdown) {
+    segments.push(MessageSegment.markdown({ content: String(d.markdown.content ?? content) }))
   }
-
-  // 5) 旧版频道消息：msg_type=2/3/4 时 content 即媒体 url
-  if (!segments.length && /^https?:\/\//.test(content)) {
-    if (msgType === 2) segments.push({ type: "image", data: { url: content, file: content } })
-    else if (msgType === 3) segments.push({ type: "video", data: { url: content, file: content } })
-    else if (msgType === 4) segments.push({ type: "record", data: { url: content, file: content } })
+  if (d.ark) segments.push(MessageSegment.json(JSON.stringify(d.ark)))
+  if (d.embed) segments.push(MessageSegment.embed(d.embed))
+  if (d.message_reference?.message_id) {
+    segments.push(MessageSegment.reply(String(d.message_reference.message_id)))
   }
-
   return segments
 }
 
-// 解析 content 中的富文本标签并追加到 segments：
-// <img src=".."/>、<video src=".."/>、<record src=".."/>、<emoji:id/>、<a href="..">text</a>、<@xxx/>
-// 文本部分作为 text 段保留，按出现顺序拼接。
-function pushMarkdownTags(segments: Array<{ type: string; data: Record<string, any> }>, raw: string): void {
-  const RE =
-    /(<img[^>]*src="([^"]*)"[^>]*\/?>|<video[^>]*src="([^"]*)"[^>]*\/?>|<record[^>]*src="([^"]*)"[^>]*\/?>|<audio[^>]*src="([^"]*)"[^>]*\/?>|<emoji:(\d+)\/>|<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>|<@!?([^>\/\s]+)\/>)/g
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = RE.exec(raw)) !== null) {
-    const before = raw.slice(last, m.index)
-    if (before) segments.push({ type: "text", data: { text: before } })
-    const [full, , img, video, record, audio, emoji, href, linkText, atId] = m
-    if (img) segments.push({ type: "image", data: { url: img, file: img } })
-    else if (video) segments.push({ type: "video", data: { url: video, file: video } })
-    else if (record) segments.push({ type: "record", data: { url: record, file: record } })
-    else if (audio) segments.push({ type: "record", data: { url: audio, file: audio } })
-    else if (emoji) segments.push({ type: "face", data: { id: emoji } })
-    else if (href) {
-      const t = (linkText ?? "").trim()
-      segments.push({ type: "text", data: { text: t ? `${t} (${href})` : href } })
-    } else if (atId) {
-      segments.push({ type: "at", data: { qq: atId, name: atId } })
-    }
-    last = m.index + full.length
+// ISO 时间串 / Unix 秒 → Unix 秒
+function toUnixSeconds(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v
+  if (typeof v === "string" && v) {
+    const parsed = Date.parse(v)
+    if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000)
   }
-  const tail = raw.slice(last)
-  if (tail) segments.push({ type: "text", data: { text: tail } })
+  return Math.floor(Date.now() / 1000)
+}
+
+// 将消息段序列化为 QQ 纯文本（markdown/按钮/卡片等走独立字段，此处返回空）
+export function segmentsToQqText(segments: Array<{ type: string; data: Record<string, any> }>): string {
+  let text = ""
+  for (const seg of segments) {
+    switch (seg.type) {
+      case "text":
+        text += String(seg.data?.text ?? "")
+        break
+      case "at":
+        text += `<@${seg.data?.qq ?? ""}>`
+        break
+      case "face":
+        text += `<emoji:${seg.data?.id ?? ""}>`
+        break
+      case "image":
+      case "video":
+      case "record":
+      case "file":
+      case "json":
+      case "ark":
+      case "embed":
+      case "music":
+      case "forward":
+      case "markdown":
+      case "button":
+        // 上述类型通过对应消息字段发送，不计入纯文本
+        break
+      default:
+        break
+    }
+  }
+  return text
 }

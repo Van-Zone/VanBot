@@ -16,7 +16,8 @@ import { FULL_CAPABILITIES } from "./capabilities.js"
 // 框架已知的消息段类型白名单（未知类型 → 占位）
 const KNOWN_SEG_TYPES = new Set<string>([
   "text", "at", "image", "face", "video", "reply", "record", "file",
-  "forward", "dice", "rps", "poke", "json", "music", "markdown", "button",
+  "forward", "dice", "rps", "poke", "json", "ark", "embed", "music",
+  "markdown", "button",
 ])
 
 // 生成全局唯一追踪 ID（24 位十六进制）

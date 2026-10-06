@@ -16,9 +16,11 @@
 //   van -h / --help                 查看帮助
 //   van -v / --version              查看版本
 //
-// 社区源配置（config.json 顶层，完整清单 URL）：
-//   "adapterApi": "https://bot.ziyi.asia/api/adapters"
-//   "pluginApi":  "https://bot.ziyi.asia/api/plugins"
+// 社区源配置（config.json 顶层，清单 URL，不含 .json 时自动补全）：
+//   "adapterApi": "http://bot.ziyi.asia/api/adapters"
+//   "pluginApi":  "http://bot.ziyi.asia/api/plugins"
+// 适配器文件下载路径：{adapterApi}/{name}/{filename}
+// 插件源码内嵌于清单，无需额外下载
 //
 import { createRequire } from "module"
 import { spawn, execSync } from "child_process"
@@ -29,7 +31,16 @@ import readline from "readline"
 
 const require = createRequire(import.meta.url)
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
-const ROOT = resolve(__dirname, "..")
+
+// 项目根目录：优先用当前工作目录（若为 VanBotJS 项目），否则回退到 CLI 所在目录
+function detectRoot() {
+  const cwd = process.cwd()
+  if (existsSync(join(cwd, "package.json")) && existsSync(join(cwd, "src", "index.ts"))) {
+    return cwd
+  }
+  return resolve(__dirname, "..")
+}
+const ROOT = detectRoot()
 const CONFIG_PATH = join(ROOT, "config.json")
 const ADAPTER_DIR = join(ROOT, "src", "adapter")
 const PLUGIN_DIR = join(ROOT, "plugin")
@@ -66,7 +77,7 @@ function apiField(name) {
   if (!cfg[name]) {
     console.error(
       cRed(`config.json 未配置 ${name}。`) +
-        `\n  请在 config.json 顶层添加，例如: "${name}": "https://bot.ziyi.asia/api/xxx"`,
+        `\n  请在 config.json 顶层添加，例如: "${name}": "http://bot.ziyi.asia/api/xxx"`,
     )
     process.exit(1)
   }
@@ -102,14 +113,23 @@ async function fetchJson(url) {
   return JSON.parse(await res.text())
 }
 
+// 清单 URL：api 不含 .json 时自动补全
+function listUrl(api) {
+  return api.endsWith(".json") ? api : api + ".json"
+}
+// 下载基址：api 含 .json 时去掉后缀
+function baseOf(api) {
+  return api.endsWith(".json") ? api.slice(0, -5) : api
+}
+
 async function fetchAdapterList() {
-  const list = await fetchJson(adapterApi())
+  const list = await fetchJson(listUrl(adapterApi()))
   if (!Array.isArray(list)) throw new Error("社区返回的不是适配器清单")
   return list
 }
 
 async function fetchPluginList() {
-  const list = await fetchJson(pluginApi())
+  const list = await fetchJson(listUrl(pluginApi()))
   if (!Array.isArray(list)) throw new Error("社区返回的不是插件清单")
   return list
 }
@@ -179,7 +199,7 @@ async function cmdAdapterInstall(nameArg) {
     console.log(cYellow(`适配器 ${target.name} 已安装（src/adapter/${target.name}/）`))
     return
   }
-  const base = adapterApi()
+  const base = baseOf(adapterApi())
   const dest = join(ADAPTER_DIR, target.name)
   mkdirSync(dest, { recursive: true })
   // package.json 为适配器依赖清单，默认一并落地，便于离线查看依赖与二次分发
@@ -187,12 +207,21 @@ async function cmdAdapterInstall(nameArg) {
   console.log(cCyan(`正在从社区安装适配器 ${target.name} ...`))
   let ok = 0
   for (const f of files) {
-    const url = `${base}/${target.name}/raw?file=${encodeURIComponent(f)}`
+    const url = `${base}/${target.name}/${encodeURIComponent(f)}`
     try {
-      const text = await (await fetch(url, {
+      const res = await fetch(url, {
         headers: { "User-Agent": "VanBotJS-CLI" },
         signal: AbortSignal.timeout(30000),
-      })).text()
+      })
+      if (!res.ok) {
+        console.error(cRed(`  [失败] ${f}: HTTP ${res.status}`))
+        continue
+      }
+      const text = await res.text()
+      if (text.trimStart().startsWith("<!DOCTYPE")) {
+        console.error(cRed(`  [失败] ${f}: 社区源返回了 HTML 页面（文件不存在或路径错误）`))
+        continue
+      }
       writeFileSync(join(dest, f), text, "utf8")
       console.log(cGreen(`  [OK] ${f}`))
       ok++
@@ -458,9 +487,9 @@ ${cBold("用法:")}
   ${cCyan("van -v / --version")}       查看版本
 
 ${cBold("社区源配置:")}
-  在 config.json 顶层设置（完整清单 URL）:
-  ${cCyan('"adapterApi": "https://bot.ziyi.asia/api/adapters"')}
-  ${cCyan('"pluginApi": "https://bot.ziyi.asia/api/plugins"')}
+  在 config.json 顶层设置（清单 URL，不含 .json 时自动补全）:
+  ${cCyan('"adapterApi": "http://bot.ziyi.asia/api/adapters"')}
+  ${cCyan('"pluginApi": "http://bot.ziyi.asia/api/plugins"')}
 
 ${cBold("示例:")}
   van run                          # 启动机器人

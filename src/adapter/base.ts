@@ -100,6 +100,19 @@ export abstract class BaseAdapter {
     return this.sendPrivateMsg(target.userId ?? 0, chain, ctx)
   }
 
+  // 以「回复某条事件」的方式发送：默认按事件所属群/私聊走 sendMsg。
+  // 适配器可覆写以注入协议侧被动回复标识（如 QQ 的 msg_id / event_id）。
+  async reply(
+    event: BotEvent,
+    chain: MessageChain | string,
+    ctx?: SendContext,
+  ): Promise<unknown> {
+    if (event.groupId) {
+      return this.sendGroupMsg(event.groupId, chain, ctx)
+    }
+    return this.sendPrivateMsg(event.userId, chain, ctx)
+  }
+
   // 发送成功后派发 message_sent 事件（供日志插件显示机器人发出的消息）
   // 不经过 emitEvent（不走 ignoreSelf / 收发统计 / 归一化），直接广播给插件
   private emitMessageSent(groupId: string, userId: string, message: unknown): void {
